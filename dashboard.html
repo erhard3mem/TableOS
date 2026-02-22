@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudTracker — Live Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg:       #0a0c0f;
+    --panel:    #0f1318;
+    --border:   #1e2530;
+    --accent:   #00e5ff;
+    --accent2:  #ff6b35;
+    --text:     #c8d6e5;
+    --muted:    #4a5568;
+    --success:  #00ff88;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Barlow', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 320px 1fr;
+    grid-template-areas:
+      "header header"
+      "sidebar map";
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    grid-area: header;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    position: relative;
+    z-index: 1000;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .logo span { color: var(--accent2); }
+
+  .header-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .pulse-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 2s infinite;
+  }
+  .pulse-dot.offline { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  #status-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 14px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover { background: var(--accent); color: var(--bg); }
+
+  /* ── SIDEBAR ── */
+  aside {
+    grid-area: sidebar;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* LOGIN PANEL */
+  #login-panel {
+    padding: 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .field {
+    margin-bottom: 10px;
+  }
+
+  .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--muted); }
+
+  .field label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 3px;
+    padding: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: opacity 0.2s;
+    margin-top: 4px;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #login-error {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent2);
+    margin-top: 8px;
+    min-height: 14px;
+  }
+
+  /* STATS */
+  #stats-panel {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+
+  /* LATEST POINT */
+  #latest-panel {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .coord-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .coord-row:last-child { border-bottom: none; }
+
+  .coord-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .coord-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  /* RECORD LIST */
+  #records-panel {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+
+  .records-header {
+    padding: 16px 20px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #record-list {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .record-item {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .record-item:hover { background: rgba(0, 229, 255, 0.04); }
+  .record-item.active { background: rgba(0, 229, 255, 0.08); border-left: 2px solid var(--accent); }
+
+  .record-coords {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .record-time {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  .record-speed {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--accent2);
+  }
+
+  /* MAP */
+  #map {
+    grid-area: map;
+    width: 100%;
+    height: 100%;
+    background: #0d1117;
+  }
+
+  /* Leaflet overrides */
+  .leaflet-container { background: #0d1117; }
+  .leaflet-control-zoom a {
+    background: var(--panel) !important;
+    color: var(--accent) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-attribution {
+    background: rgba(10,12,15,0.8) !important;
+    color: var(--muted) !important;
+    font-family: var(--mono) !important;
+    font-size: 9px !important;
+  }
+  .leaflet-control-attribution a { color: var(--muted) !important; }
+
+  /* Custom popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .leaflet-popup-tip { background: var(--panel); }
+  .leaflet-popup-content { margin: 14px 16px; line-height: 1.8; }
+
+  /* Empty / loading states */
+  .empty-state {
+    padding: 30px 20px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Server URL bar */
+  #server-row {
+    padding: 10px 20px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+  }
+  #server-url {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    outline: none;
+  }
+  #server-url:focus { border-color: var(--accent); }
+
+  .fade-in { animation: fadeIn 0.4s ease forwards; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">CLOUD<span>TRACKER</span></div>
+  <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;">GPS DASHBOARD</div>
+  <div class="header-status">
+    <div class="pulse-dot offline" id="pulse"></div>
+    <span id="status-text">NOT CONNECTED</span>
+    <button class="refresh-btn" onclick="loadData()">↻ REFRESH</button>
+  </div>
+</header>
+
+<!-- SIDEBAR -->
+<aside>
+
+  <!-- Server URL -->
+  <div id="server-row">
+    <input id="server-url" type="text" value="http://localhost:3000" placeholder="http://your-server:3000"/>
+  </div>
+
+  <!-- Login -->
+  <div id="login-panel">
+    <div class="section-label">Authentication</div>
+    <div class="field">
+      <label>USERNAME</label>
+      <input id="username" type="text" placeholder="testuser" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label>PASSWORD</label>
+      <input id="password" type="password" placeholder="••••••••"/>
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="login()">CONNECT</button>
+    <div id="login-error"></div>
+  </div>
+
+  <!-- Stats -->
+  <div id="stats-panel">
+    <div class="stat-box">
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">TOTAL POINTS</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-devices">—</div>
+      <div class="stat-label">DEVICES</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-speed">—</div>
+      <div class="stat-label">LAST SPEED</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-acc">—</div>
+      <div class="stat-label">ACCURACY M</div>
+    </div>
+  </div>
+
+  <!-- Latest point -->
+  <div id="latest-panel">
+    <div class="section-label">Latest Position</div>
+    <div class="coord-row"><span class="coord-key">LAT</span><span class="coord-val" id="lat-val">—</span></div>
+    <div class="coord-row"><span class="coord-key">LNG</span><span class="coord-val" id="lng-val">—</span></div>
+    <div class="coord-row"><span class="coord-key">ALT</span><span class="coord-val" id="alt-val">—</span></div>
+    <div class="coord-row"><span class="coord-key">TIME</span><span class="coord-val" id="time-val" style="font-size:10px">—</span></div>
+  </div>
+
+  <!-- Record list -->
+  <div id="records-panel">
+    <div class="records-header">
+      <span class="section-label" style="margin:0">History</span>
+      <span id="record-count" style="font-family:var(--mono);font-size:10px;color:var(--muted)">0 points</span>
+    </div>
+    <div id="record-list">
+      <div class="empty-state">Connect to load GPS history</div>
+    </div>
+  </div>
+
+</aside>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<script>
+  // ── STATE ──
+  let token = null;
+  let map = null;
+  let markers = [];
+  let polyline = null;
+  let records = [];
+  let activeMarkerIdx = null;
+
+  // ── MAP INIT ──
+  map = L.map('map', { zoomControl: true, attributionControl: true }).setView([48.2, 16.37], 13);
+
+  // Dark tile layer (CartoDB Dark Matter)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  // ── CUSTOM MARKER ICONS ──
+  function makeIcon(color, size = 10) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="
+        width:${size}px;height:${size}px;
+        background:${color};
+        border:2px solid rgba(255,255,255,0.3);
+        border-radius:50%;
+        box-shadow:0 0 8px ${color};
+      "></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    });
+  }
+
+  const iconNormal  = makeIcon('#00e5ff', 10);
+  const iconLatest  = makeIcon('#00ff88', 16);
+  const iconActive  = makeIcon('#ff6b35', 14);
+
+  // ── AUTH ──
+  async function login() {
+    const url  = document.getElementById('server-url').value.trim();
+    const user = document.getElementById('username').value.trim();
+    const pass = document.getElementById('password').value;
+    const btn  = document.getElementById('login-btn');
+    const err  = document.getElementById('login-error');
+
+    if (!user || !pass) { err.textContent = 'Fill in username and password'; return; }
+
+    btn.disabled = true;
+    btn.textContent = 'CONNECTING...';
+    err.textContent = '';
+
+    try {
+      const res = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+
+      if (data.token) {
+        token = data.token;
+        setConnected(true);
+        btn.textContent = '✓ CONNECTED';
+        loadData();
+      } else {
+        err.textContent = data.error || 'Login failed';
+        btn.disabled = false;
+        btn.textContent = 'CONNECT';
+      }
+    } catch (e) {
+      err.textContent = 'Cannot reach server: ' + e.message;
+      btn.disabled = false;
+      btn.textContent = 'CONNECT';
+    }
+  }
+
+  function setConnected(online) {
+    const dot = document.getElementById('pulse');
+    const txt = document.getElementById('status-text');
+    if (online) {
+      dot.classList.remove('offline');
+      txt.textContent = 'LIVE';
+    } else {
+      dot.classList.add('offline');
+      txt.textContent = 'NOT CONNECTED';
+    }
+  }
+
+  // ── LOAD DATA ──
+  async function loadData() {
+    if (!token) return;
+    const url = document.getElementById('server-url').value.trim();
+
+    document.getElementById('record-list').innerHTML =
+      '<div class="empty-state"><span class="spinner"></span>LOADING...</div>';
+
+    try {
+      // Fetch all keys
+      const res = await fetch(`${url}/data`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+
+      // Filter GPS keys only
+      const gpsKeys = (data.keys || []).filter(k => k.key.startsWith('gps:'));
+
+      if (gpsKeys.length === 0) {
+        document.getElementById('record-list').innerHTML =
+          '<div class="empty-state">No GPS records found.<br>Start the Android app to begin tracking.</div>';
+        return;
+      }
+
+      // Fetch all GPS records in parallel (batched to avoid overwhelming server)
+      const BATCH = 20;
+      records = [];
+      for (let i = 0; i < gpsKeys.length; i += BATCH) {
+        const batch = gpsKeys.slice(i, i + BATCH);
+        const fetched = await Promise.all(batch.map(k =>
+          fetch(`${url}/data/${encodeURIComponent(k.key)}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+          }).then(r => r.json()).then(v => ({ key: k.key, ...v })).catch(() => null)
+        ));
+        records.push(...fetched.filter(Boolean));
+      }
+
+      // Sort oldest → newest
+      records.sort((a, b) => a.timestamp - b.timestamp);
+
+      renderMap();
+      renderList();
+      renderStats();
+
+    } catch (e) {
+      document.getElementById('record-list').innerHTML =
+        `<div class="empty-state">Error loading data:<br>${e.message}</div>`;
+    }
+  }
+
+  // ── RENDER MAP ──
+  function renderMap() {
+    // Clear existing
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    if (polyline) map.removeLayer(polyline);
+
+    if (records.length === 0) return;
+
+    const latlngs = records.map(r => [r.lat, r.lng]);
+
+    // Draw path
+    polyline = L.polyline(latlngs, {
+      color: '#00e5ff',
+      weight: 2,
+      opacity: 0.5,
+      dashArray: '4 4'
+    }).addTo(map);
+
+    // Add markers
+    records.forEach((r, i) => {
+      const isLatest = i === records.length - 1;
+      const icon = isLatest ? iconLatest : iconNormal;
+      const time = new Date(r.timestamp).toLocaleString();
+      const speed = r.speed_ms != null ? (r.speed_ms * 3.6).toFixed(1) + ' km/h' : 'n/a';
+
+      const marker = L.marker([r.lat, r.lng], { icon })
+        .bindPopup(`
+          <div style="color:#00e5ff;font-size:13px;margin-bottom:6px;">${isLatest ? '◉ LATEST' : '◎ POINT ' + (i+1)}</div>
+          <div style="color:#4a5568">LAT</div><div>${r.lat.toFixed(6)}</div>
+          <div style="color:#4a5568">LNG</div><div>${r.lng.toFixed(6)}</div>
+          <div style="color:#4a5568">ALT</div><div>${r.altitude_m != null ? r.altitude_m.toFixed(1) + ' m' : 'n/a'}</div>
+          <div style="color:#4a5568">SPEED</div><div>${speed}</div>
+          <div style="color:#4a5568">ACC</div><div>${r.accuracy_m != null ? r.accuracy_m.toFixed(1) + ' m' : 'n/a'}</div>
+          <div style="color:#4a5568;margin-top:6px">TIME</div><div style="color:#888;font-size:10px">${time}</div>
+        `)
+        .addTo(map);
+
+      marker.on('click', () => selectRecord(i));
+      markers.push(marker);
+    });
+
+    // Fit map to all points
+    map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+  }
+
+  // ── RENDER LIST ──
+  function renderList() {
+    const list = document.getElementById('record-list');
+    list.innerHTML = '';
+
+    const displayed = [...records].reverse(); // newest first in list
+
+    displayed.forEach((r, i) => {
+      const realIdx = records.length - 1 - i;
+      const time = new Date(r.timestamp);
+      const timeStr = time.toLocaleTimeString();
+      const dateStr = time.toLocaleDateString();
+      const speed = r.speed_ms != null ? (r.speed_ms * 3.6).toFixed(1) + ' km/h' : '';
+
+      const div = document.createElement('div');
+      div.className = 'record-item fade-in';
+      div.id = 'record-' + realIdx;
+      div.innerHTML = `
+        <div>
+          <div class="record-coords">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</div>
+          ${speed ? `<div class="record-speed">⚡ ${speed}</div>` : ''}
+        </div>
+        <div class="record-time">${timeStr}<br>${dateStr}</div>
+      `;
+      div.onclick = () => selectRecord(realIdx);
+      list.appendChild(div);
+    });
+
+    document.getElementById('record-count').textContent = records.length + ' points';
+  }
+
+  // ── RENDER STATS ──
+  function renderStats() {
+    const latest = records[records.length - 1];
+    if (!latest) return;
+
+    // Count unique devices
+    const devices = new Set(records.map(r => r.device_id)).size;
+
+    document.getElementById('stat-total').textContent = records.length;
+    document.getElementById('stat-devices').textContent = devices;
+    document.getElementById('stat-speed').textContent =
+      latest.speed_ms != null ? (latest.speed_ms * 3.6).toFixed(1) : '—';
+    document.getElementById('stat-acc').textContent =
+      latest.accuracy_m != null ? latest.accuracy_m.toFixed(0) : '—';
+
+    // Latest position panel
+    document.getElementById('lat-val').textContent = latest.lat.toFixed(6);
+    document.getElementById('lng-val').textContent = latest.lng.toFixed(6);
+    document.getElementById('alt-val').textContent =
+      latest.altitude_m != null ? latest.altitude_m.toFixed(1) + ' m' : '—';
+    document.getElementById('time-val').textContent =
+      new Date(latest.timestamp).toLocaleString();
+  }
+
+  // ── SELECT RECORD ──
+  function selectRecord(idx) {
+    // Deactivate previous
+    if (activeMarkerIdx !== null) {
+      const prev = document.getElementById('record-' + activeMarkerIdx);
+      if (prev) prev.classList.remove('active');
+      if (markers[activeMarkerIdx]) markers[activeMarkerIdx].setIcon(
+        activeMarkerIdx === records.length - 1 ? iconLatest : iconNormal
+      );
+    }
+
+    activeMarkerIdx = idx;
+    const r = records[idx];
+
+    // Highlight marker
+    if (markers[idx]) {
+      markers[idx].setIcon(iconActive);
+      markers[idx].openPopup();
+      map.setView([r.lat, r.lng], Math.max(map.getZoom(), 15), { animate: true });
+    }
+
+    // Highlight list item
+    const item = document.getElementById('record-' + idx);
+    if (item) {
+      item.classList.add('active');
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  // ── ENTER KEY for login ──
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !token) login();
+  });
+
+  // ── AUTO-REFRESH every 30 seconds ──
+  setInterval(() => { if (token) loadData(); }, 30000);
+</script>
+</body>
+</html>
