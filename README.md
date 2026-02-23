@@ -1,3 +1,6 @@
+
+<img width="3440" height="1293" alt="Bildschirmfoto vom 2026-02-23 04-13-04" src="https://github.com/user-attachments/assets/1678240d-bfe0-406c-aedf-2c8f04c975f2" />
+
 # CloudTracker
 
 A full-stack GPS tracking system consisting of:
